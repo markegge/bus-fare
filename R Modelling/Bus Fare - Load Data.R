@@ -14,14 +14,18 @@ import.csv <- function(filename){
 
 this.dir <- dirname(parent.frame(2)$ofile); setwd(this.dir) # set working directory to script directory
 
-if(!exists("mydata")) { mydata <- import.csv("sept-oct-14-p1-g2-61x-71x.csv") } # import data if not already in working env
-stops <- import.csv("stops.csv")
+# load data
+if(!exists("rawdata")) { rawdata <- import.csv("sept-oct-14-p1-g2-61x-71x.csv") } # import data if not already in working env
+if(!exists("stops")) { stops <- import.csv("stops.csv") }
+if(!exists("route.names")) { route.names <- import.csv("route-name-lookup.csv") }
 
-df <- mydata # create a working copy...
+df <- rawdata # create a working copy...
 
-rtnums = c(444, 900, 611, 612, 613, 614, 711, 712, 713, 714)
-rtnames = c('P1', 'G2', '61A', '61B', '61C', '61D', '71A', '71B', '71C', '71D')
-df$ROUTE <- factor(df$ROUTE, levels=rtnums, labels=rtnames) # label route numbers with route names based on vectors above
+#rtnums = c(444, 900, 611, 612, 613, 614, 711, 712, 713, 714)
+#rtnames = c('P1', 'G2', '61A', '61B', '61C', '61D', '71A', '71B', '71C', '71D')
+#df$ROUTE <- factor(df$ROUTE, levels=rtnums, labels=rtnames) # label route numbers with route names based on vectors above
+
+df <- merge(df, route.names, by="ROUTE")
 
 df$dir <- factor(df$dir, levels=c(0,1), labels=c('Outbound', 'Inbound')) # label direction binary variable
 
@@ -34,10 +38,10 @@ names(df)[names(df)=='dir'] <- "DIRECTION"
 
 # derive additional variables of interest
 df$PAX <- df$ON + df$OFF # create new variable for passenger movements as sum of ONs and OFFs
-df$ON2 <- df$ON ^ 2 # create non-linear term for passenger boards
-df$OFF2 <- df$OFF ^ 2 # create non-linear eterm for passenger alightments
-df$LOG.ON <- ifelse(df$ON > 0, log(df$ON), 0) # passenger loads have log normal distribution?
-df$LOG.OFF <- ifelse(df$OFF > 0, log(df$OFF), 0) # passenger exists have log normal distribution?
+#df$ON2 <- df$ON ^ 2 # create non-linear term for passenger boards
+#df$OFF2 <- df$OFF ^ 2 # create non-linear eterm for passenger alightments
+#df$LOG.ON <- ifelse(df$ON > 0, log(df$ON), 0) # passenger loads have log normal distribution?
+#df$LOG.OFF <- ifelse(df$OFF > 0, log(df$OFF), 0) # passenger exists have log normal distribution?
 
 
 #df$DATE <- as.Date(df$daymoyr, format='%d-%b-%Y') # create R format date column
@@ -60,13 +64,16 @@ dt <- dt[, 'MAXSTOP' := max(STOPA), by=TRIPUNIQUEID ] # calculate the load on ar
 dt <- dt[, 'TRIPSTARTTIME' := paste(DATE[1], HR[1], MIN[1], SEC[1], sep='-'), by=TRIPUNIQUEID]
 dt <- dt[, 'ALOAD' := shift(LOAD, n=1, fill=0, type="lag"), by=TRIPUNIQUEID ] # calculate the load on arrival
 
-# calculate number of buses to pass this stop in the previous 2 minutes
-#setkeyv(dt, c("QSTOPA", "daymoyr", "HMOD"))
-#dt <- dt[, 'BUNCHES' := .N, by=list(QSTOPA, daymoyr, HMOD)]
+# code for instances where doors opened multiple times a single stop:
+#dt <- dt[, 'STOPRECORDS' := .N, by=key(dt)]
+cat("Number of duplicate entries for any one stop:", anyDuplicated(dt, by=key(dt)))
+
+ #calculate number of buses to pass this stop in the previous 2 minutes
+setkeyv(dt, c("QSTOPA", "daymoyr", "HMOD"))
+dt <- dt[, 'BUNCHES' := .N, by=list(QSTOPA, daymoyr, HMOD)]
 
 df <- as.data.frame(dt)
 
-remove(dt, m, stops)
 
 # code the first stop and last stop on each route
 cat('Add dummy vars for first and last stops of each route')
@@ -78,7 +85,7 @@ df$LASTSTOP <- ifelse(df$STOPA == df$MAXSTOP, 1, 0)
 df$SEATS <- ifelse(substr(as.character(df$VEHNOA), 0, 1) %in% c('3', '4'), 55, 35 ) # create variable for number of seats
 df$ARTICULATING <- ifelse(df$SEATS == 55, 1, 0) # if 60 seats, then we have an articulating bus
 df$STANDEES <- pmax(0, (df$ALOAD - df$SEATS), (df$LOAD - df$SEATS)) # create variable for standees - the great of zero or the number of passengers minus seats
-df$FRICTION <- df$PAX * (df$STANDEES) # create standee-pax interaction term for Standees^2 * PAX
+df$FRICTION <- ifelse(df$STANDEES > 0, log(df$PAX * (df$STANDEES^2)), 0) # create standee-pax interaction term for Standees^2 * PAX
 
 df$PROGRESS <- round(df$STOPA / df$MAXSTOP, 2)
 
@@ -99,7 +106,7 @@ df$Z2 <- ifelse(df$ZONE == '2', 1, 0)
 # dir = 1 if inbound
 
 entry.fare.routes = c('G2', '28X')
-df$ENTRYFARE <- with(df, (DIRECTION == 'Inbound')*(Z1 + Z2) + (ROUTE %in% entry.fare.routes) + (format(df$TRIPSTARTTIME, '%H') > 18))
+df$ENTRYFARE <- with(df, (DIRECTION == 'Inbound')*(Z1 + Z2) + (RouteName %in% entry.fare.routes) + (format(df$TRIPSTARTTIME, '%H') > 18))
 df$ENTRYFARE <- ifelse(df$ENTRYFARE >= 1, 1, 0)
 #df$ENTRYFARE <- ifelse(df$ENTRYFARE == 0 & df$ROUTE %in% entry.fare.routes, 1, 0)
 table(df$ENTRYFARE)
@@ -123,4 +130,8 @@ cat("** Dataset of n=", nrow(df), "observations, describing", nlevels(df$ROUTE),
 #cat("Correlation Matrix\n")
 #cat("=============================\n")
 #print(  cor(df[ , c('DWTIME', 'ON', 'OFF', 'LOAD', 'HR', 'STOPA', 'SCHDEV') ], method = "pearson") )
+
+# clean up
+remove(dt, m, stops, route.names)
+
 print("Data loaded.\n")

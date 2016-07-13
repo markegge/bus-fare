@@ -6,7 +6,7 @@ library(car) # used for residual plots
 
 #tapply(bus$PAX, bus$ROUTE, stat.desc)
 
-sdf <- bus[bus$ROUTE == 'P1', ] # P1 only
+sdf <- bus[bus$RouteName == 'P1', ] # P1 only
 sdf <- sdf[sdf$ZFREE == 1, ] # CBD only
 sdf <- sdf[sdf$HR < 19, ] # before 7 pm only
 cat("\n===============================================\n")
@@ -14,12 +14,11 @@ cat("Model 0 - No Fares: P1 in Free Zone (CBD) Before 7 PM (no fares collected) 
 cat('Mean Dwell Time (both stops, all routes):', mean(sdf$DWTIME), 'seconds.\n')
 cat("===============================================\n")
 #elm <- lm(DWTIME ~ ON + OFF + FRICTION + PROGRESS + ZFREE, data=sdf) # r2 = .65
-elm <- lm(DWTIME ~ ON + OFF + FRICTION, data=sdf) # r2 = .62
+elm <- lm(DWTIME ~ ON + OFF + FRICTION, data=sdf)
 print( summary(elm) )
 
 
-
-sdf <- bus[bus$ROUTE %in% c('P1') & bus$ZFREE==FALSE & bus$HR < 19 & bus$DIRECTION=='Outbound', ] # P1 exit fare
+sdf <- bus[bus$RouteName %in% c('P1') & bus$ZFREE==FALSE & bus$HR < 19 & bus$DIRECTION=='Outbound', ] # P1 exit fare
 cat("\n===============================================\n")
 cat("Model 1: P1 with exit fare \n")
 cat('Mean Dwell Time (both stops, all routes):', mean(sdf$DWTIME), 'seconds.\n')
@@ -27,8 +26,16 @@ cat("===============================================\n")
 elm <- lm(DWTIME ~ ON + OFF + FRICTION, data=sdf)
 print( summary(elm) )
 
+sdf <- bus[bus$RouteName %in% c('P1'), ] # P1
+cat("\n===============================================\n")
+cat("Model 1.5: P1 with exit fare interaction \n")
+cat('Mean Dwell Time (both stops, all routes):', mean(sdf$DWTIME), 'seconds.\n')
+cat("===============================================\n")
+elm <- lm(DWTIME ~ ON + (OFF*EXITFARE) + (OFF*FRICTION), data=sdf)
+print( summary(elm) )
 
-sdf <- bus[bus$ROUTE == 'G2', ] # G2 only
+
+sdf <- bus[bus$RouteName == 'G2', ] # G2 only
 #sdf <- sdf[sdf$PMRUSHHOUR == 1, ] # PM rush hour only
 cat("\n===============================================\n")
 cat("Model 2: G2 (Entry Fare) only \n")
@@ -38,7 +45,7 @@ m2 <- lm(DWTIME ~ ON + OFF + FRICTION, data=sdf)
 print( summary(m2) )
 
 
-sdf <- bus[bus$ROUTE %in% c('P1', 'G2'), ] # P1 and G2, all time
+sdf <- bus[bus$RouteName %in% c('P1', 'G2'), ] # P1 and G2, all time
 cat("\n===============================================\n")
 cat("Model 3: P1 and G2 Route Regression \n")
 cat('Mean Dwell Time (both stops, all routes):', mean(sdf$DWTIME), 'seconds.\n')
@@ -47,7 +54,7 @@ elm <- lm(DWTIME ~ (ON*ENTRYFARE) + (OFF*EXITFARE) + FRICTION, data=sdf)
 print( summary(elm) )
 
 
-sdf <- bus[bus$ROUTE == 'P1', ] # P1 only
+sdf <- bus[bus$RouteName == 'P1', ] # P1 only
 cat("\n===============================================\n")
 cat("Model 4: Within P1 Route Regression \n")
 cat('Mean Dwell Time (both stops, all routes):', mean(sdf$DWTIME), 'seconds.\n')
@@ -56,7 +63,7 @@ elm <- lm(DWTIME ~ (ON*ENTRYFARE) + (OFF*EXITFARE) + FRICTION, data=sdf)
 print( summary(elm) )
 
 
-sdf <- bus[bus$ROUTE %in% c('61A', '61B', '61C', '61D'), ] # 61x only
+sdf <- bus[bus$RouteName %in% c('61A', '61B', '61C', '61D'), ] # 61x only
 cat("\n===============================================\n")
 cat("Model 5: Within 61 Route Regression \n")
 cat('Mean Dwell Time (both stops, all routes):', mean(sdf$DWTIME), 'seconds.\n')
@@ -65,7 +72,7 @@ elm <- lm(DWTIME ~ (ON*ENTRYFARE) + (OFF*EXITFARE) + FRICTION, data=sdf)
 print( summary(elm) )
 
 
-sdf <- bus[bus$ROUTE %in% c('71A', '71B', '71C', '71D'), ] # 71x only
+sdf <- bus[bus$RouteName %in% c('71A', '71B', '71C', '71D'), ] # 71x only
 # sdf <- sdf[sdf$PMRUSHHOUR == 1, ] # PM rush hour only. During PM rush hour, this effect disappears
 cat("\n===============================================\n")
 cat("Model 6: Within 71 Route Regression \n")
@@ -92,13 +99,13 @@ elm <- lm(DWTIME ~ (ON*ENTRYFARE) + (OFF*EXITFARE) + FRICTION + ROUTE, data=sdf)
 print( summary(elm) )
 
 
-sdf <- bus
-cat("\n===============================================\n")
-cat("Model 8: All buses, controlling for route*stop \n")
-cat('Mean Dwell Time (both stops, all routes and stops):', mean(sdf$DWTIME), 'seconds.\n')
-cat("===============================================\n")
-elm <- lm(DWTIME ~ (ON*ENTRYFARE) + (OFF*EXITFARE) + FRICTION + QSTOPA, data=sdf)
-print( summary(elm) )
+# sdf <- bus
+# cat("\n===============================================\n")
+# cat("Model 8: All buses, controlling for route*stop \n")
+# cat('Mean Dwell Time (both stops, all routes and stops):', mean(sdf$DWTIME), 'seconds.\n')
+# cat("===============================================\n")
+# elm <- lm(DWTIME ~ (ON*ENTRYFARE) + (OFF*EXITFARE) + FRICTION + QSTOPA, data=sdf)
+# print( summary(elm) )
 
 
 # return output to local

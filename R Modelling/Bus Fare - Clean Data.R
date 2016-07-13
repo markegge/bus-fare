@@ -15,14 +15,24 @@ bus <- df[ , names(df)[!(names(df) %in% dropcols)]]
 
 # ******************
 # ** Clean Data  ***
+start.rows <- rows <- nrow(bus)
+cat("Started data cleaning with", start.rows, "rows.\n")
+
+bus <- bus[bus$DWTIME > 0, ] # eliminate records where dwell time is zero (1)
+cat("Removed", rows - nrow(bus), "not-stop rows where dwell time = 0\n")
 rows <- nrow(bus)
-cat("Started data cleaning with", rows, "rows.")
+
+bus <- bus[bus$DWTIME < 300, ]
+cat("Removed", rows - nrow(bus), "rows where dwell time greater than 5 minutes\n")
+rows <- nrow(bus)
 
 bus <- bus[bus$STOPA < 999 , ] # filter out rows where STOP # = 999
 cat("Removed", rows - nrow(bus), "rows where stop number = 999\n")
 rows <- nrow(bus)
 
-# TO DO: remove observations where the door opens more than once for a given stop
+bus <- bus[bus$PAX > 0, ] # eliminate records where zero passenger movements occured
+cat("Removed", rows - nrow(bus), "rows where no passengers boarded or alighted\n")
+rows <- nrow(bus)
 
 bus <- bus[bus$FIRSTSTOP == 0, ] # get rid of stops where first stop is true (dwell time at the first stop is uncorrelated to passenger activity)
 cat("Removed", rows - nrow(bus), "rows for the first stop on a line\n")
@@ -30,14 +40,6 @@ rows <- nrow(bus)
 
 bus <- bus[bus$LASTSTOP == 0, ] # get rid of stops where last stop is true (dwell time at the first stop is uncorrelated to passenger activity)
 cat("Removed", rows - nrow(bus), "rows for the last stop on a line\n")
-rows <- nrow(bus)
-
-bus <- bus[bus$DWTIME > 0, ] # eliminate records where dwell time is zero (1)
-cat("Removed", rows - nrow(bus), "rows where dwell time = 0\n")
-rows <- nrow(bus)
-
-bus <- bus[bus$PAX > 0, ] # eliminate records where zero passenger movements occured
-cat("Removed", rows - nrow(bus), "rows no passengers boarded or alighted\n")
 rows <- nrow(bus)
 
 # keep only weekdays
@@ -67,25 +69,20 @@ stop.stats <- dt[, list(dwt.mean=mean(DWTIME),
                         mean.dwt.per.pax=mean(DWTIME / PAX)
                         ), 
                  by=QSTOPA]
-# get rid of stops where count < 10, or where mean dwell time per passenger action is greater than 10 seconds
-infrequent.stops <- stop.stats$QSTOPA[stop.stats$count < 10]
-long.stops <- stop.stats$QSTOPA[stop.stats$mean.dwt.per.pax > 15]
-#setkeyv(dt, c("ROUTE", "QSTOPA"))
-#stop.avgs <- dt[,list(avg.dwtime = mean(DWTIME), avg.ons = mean(ON), avg.offs = mean(OFF)), by=QSTOPA]
-#long.stops <- stop.avgs$QSTOPA[stop.avgs$avg.dwtime > 100]
 
-# remove stops where the stop's average dwell time /per passenger action is > 15 seconds
+# remove stops where the stop's average dwell time per passenger action is > 15 seconds
+long.stops <- stop.stats$QSTOPA[stop.stats$mean.dwt.per.pax > 15]
 bus <- bus[!bus$QSTOPA %in% long.stops, ]
 cat("Removed", rows - nrow(bus), "where the stop's average dwell time per passenger action is > 15 seconds\n")
 rows <- nrow(bus)
 
 # remove stops with fewer than 10 observations
+infrequent.stops <- stop.stats$QSTOPA[stop.stats$count < 10]
 bus <- bus[!bus$QSTOPA %in% infrequent.stops, ] 
 cat("Removed", rows - nrow(bus), "where the stop has fewer than 10 observations\n")
 rows <- nrow(bus)
-#remove(dt, infrequent.stops,long.stops)
 
-# remove observations with dwell time or APX more than 5 SD from mean
+# remove observations with dwell time or PAX more than 5 SD from mean
 var.stats <- stat.desc(bus[, c("DWTIME", "PAX")])
 bus <- bus[bus$DWTIME < (var.stats["mean", "DWTIME"] + 5*var.stats["std.dev","DWTIME"]), ]
 cat("Removed", rows - nrow(bus), "rows where dwell time more than 5 SD from mean\n")
@@ -94,12 +91,8 @@ bus <- bus[bus$PAX < (var.stats["mean", "PAX"] + 10*var.stats["std.dev","PAX"]),
 cat("Removed", rows - nrow(bus), "rows where PAX more than 10 SD from mean\n")
 rows <- nrow(bus)
 
-bus <- bus[bus$DWTIME < 300, ]
-cat("Removed", rows - nrow(bus), "rows where dwell time greater than 5 minutes\n")
-rows <- nrow(bus)
 
-
-#what happens if we get rid of stations?
+# remove odd anomaly where dwell time = 10 seconds, uncorrelated to PAX
 cat("Discarding ", nrow(bus[bus$DWTIME==10 & bus$STATION==1, ]), " station stop rows where dwell time = 10 seconds.\n")
 bus <- bus[!(bus$DWTIME==10 & bus$STATION==1), ]
 
@@ -127,19 +120,19 @@ rows <- nrow(bus)
 
 # some validation:
 cat("Entry / Exit / None", table(sum(bus$ENTRYFARE, bus$EXITFARE)))
-cat ("CBD rows with entryfare: ", nrow(bus[bus$ZFREE==1 & bus$ENTRYFARE==1 & bus$ROUTE=='P1' & bus$HR < 19, ]), "\n")
-cat ("CBD rows with entryfare: ", nrow(bus[bus$ZFREE==1 & bus$EXITFARE==1 & bus$ROUTE=='P1' & bus$HR < 19, ]), "\n")
-
+cat ("CBD rows with entryfare: ", nrow(bus[bus$ZFREE==1 & bus$ENTRYFARE==1 & bus$RouteName=='P1' & bus$HR < 19, ]), "\n")
+cat ("CBD rows with entryfare: ", nrow(bus[bus$ZFREE==1 & bus$EXITFARE==1 & bus$RouteName=='P1' & bus$HR < 19, ]), "\n")
+cat("Finishing up. Removed", start.rows - nrow(bus),"rows, or",  (start.rows - nrow(bus)) / start.rows, "% of total.")
 cat("Resulting dataset describes", length(unique(bus$ROUTE)), "routes,", length(unique(bus$TRIPUNIQUEID)), "trips, and", nrow(bus),"stops.")
 
 validation.plots <- function() {
   ggplot(bus, aes(x=PAX, y=DWTIME)) +
-    geom_point(aes(color=ROUTE)) + 
+    geom_point(aes(color=RouteName)) + 
     geom_smooth()
   
 
-  j <- ggplot(bus, aes(PAX, DWTIME, fill=ROUTE)) + 
-    geom_point(aes(color=ROUTE)) + 
+  j <- ggplot(bus, aes(PAX, DWTIME, fill=RouteName)) + 
+    geom_point(aes(color=RouteName)) + 
     labs(title='Dwell Time vs Passenger Actions', y = 'Dwell time (seconds)', x = 'Boarding / Alighting Passengers') 
   print(j)
   
